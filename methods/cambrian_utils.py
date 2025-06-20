@@ -1,7 +1,7 @@
 import torch
 import sys
 # ADD PATH TO CAMBRIAN REPOSITORY
-sys.path.append('/home/anish/vl-interp/cambrian')
+sys.path.append('/kaggle/working/vl-interp/cambrian')
 
 from cambrian.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
 from cambrian.conversation import conv_templates
