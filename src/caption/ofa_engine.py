@@ -6,7 +6,6 @@ from collections import defaultdict
 import torch
 from git.repo import Repo
 from PIL import Image
-from torchvision import transforms
 import numpy as np
 from scipy.stats import entropy
 
@@ -45,6 +44,7 @@ def _get_ofa_model(model: str) -> Tuple[str, str]:
 
 
 class OFACaptionEngine(CaptionEngine):
+    
     def __init__(
         self, model: str = "large-caption", device: Optional[str] = None, prompt: str = _OFA_DEFAULT_PROMPT
     ):
