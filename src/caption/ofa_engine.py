@@ -6,7 +6,7 @@ from collections import defaultdict
 import torch
 from git.repo import Repo
 from PIL import Image
-from torchvision import transforms
+# from torchvision import transforms
 import numpy as np
 from scipy.stats import entropy
 
