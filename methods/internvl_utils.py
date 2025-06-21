@@ -281,7 +281,7 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
     logits_warper = TopKLogitsWarper(top_k=300, filter_value=float("-inf"))
     logits_processor = LogitsProcessorList([])
     
-    for hs in output.hidden_states[0]:  # Обрабатываем по одному слою
+    for hs in output.hidden_states[-1]:  # Обрабатываем по одному слою
         with torch.inference_mode():
             curr_layer_logits = state["model"].lm_head(hs.to(torch.bfloat16)).cpu()
             print('1 ',   curr_layer_logits)
