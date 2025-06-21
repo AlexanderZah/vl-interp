@@ -351,7 +351,7 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
             softmax_probs_layer = F.softmax(logits, dim=-1)  # Shape: (batch_size, num_image_tokens, vocab_size)
             softmax_probs.append(softmax_probs_layer.cpu().numpy())
             print(f"Layer {layer_idx} softmax min/max:", softmax_probs_layer.min().item(), softmax_probs_layer.max().item())
-        del logits, softmax_probs_layer
+            del logits, softmax_probs_layer, hs
     # Объединяем и транспонируем softmax_probs
     softmax_probs = np.stack(softmax_probs)  # Shape: (num_layers, batch_size, num_image_tokens, vocab_size)
     softmax_probs = softmax_probs.squeeze(1)  # Удаляем batch_size=1: (num_layers, num_image_tokens, vocab_size)
