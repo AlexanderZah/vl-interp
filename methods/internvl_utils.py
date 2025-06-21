@@ -355,8 +355,8 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
             gc.collect()
     # Объединяем и транспонируем softmax_probs
     softmax_probs = np.stack(softmax_probs)  # Shape: (num_layers, batch_size, num_image_tokens, vocab_size)
-    softmax_probs = softmax_probs.squeeze(1)  # Удаляем batch_size=1: (num_layers, num_image_tokens, vocab_size)
-    softmax_probs = softmax_probs.transpose(2, 0, 1)  # Shape: (vocab_size, num_layers, num_image_tokens)
+    # softmax_probs = softmax_probs.squeeze(1)  # Удаляем batch_size=1: (num_layers, num_image_tokens, vocab_size)
+    softmax_probs = softmax_probs.transpose(3, 0, 2, 1)  # Shape: (vocab_size, num_layers, num_image_tokens)
 
     print("softmax_probs shape:", softmax_probs.shape)
     print("softmax_probs sample:", softmax_probs[:5, :5, :5])  # Отладочный вывод первых значений
