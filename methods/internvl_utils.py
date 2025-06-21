@@ -174,7 +174,7 @@ def generate_images_tensor(model, img_path, image_processor=None):
 
     # Загрузка изображений
     image_files = img_path
-    images_tensor = load_image_internvl(image_files)
+    images_tensor = load_image_internvl(image_files).to(torch.float16).cuda()
 
     # Получение размера изображения из конфигурации модели
     image_size = model.config.vision_config.image_size
