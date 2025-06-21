@@ -313,6 +313,7 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
     ]
 
     # Транспонируем к форме (vocab_dim, num_layers, num_tokens)
+    print("softmax_probs shape:", softmax_probs.shape)
     softmax_probs = softmax_probs.transpose(2, 0, 1)  # Убираем num_beams, так как max уже взят в run_internvl_model
 
     return caption, softmax_probs
