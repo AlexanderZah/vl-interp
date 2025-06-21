@@ -148,7 +148,7 @@ def generate_images_tensor(model, img_path, image_processor=None):
     transform = build_transform(image_size)
 
     # Обработка изображений
-    images_tensor = transform(image).unsqueeze(0).to(torch.float16).cuda()
+    images_tensor = transform(image).unsqueeze(0).to(torch.bfloat16).cuda()
 
     return images_tensor, image, image_sizes
 
@@ -275,6 +275,7 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
     num_image_tokens = state["model"].num_image_token * num_patches
     print('0 ',   num_image_tokens)
     print('0image_token_index ',   image_token_index)
+    print('len output.hidden_states[0] ', len(output.hidden_states[0]))
     softmax_probs = []
     
     logits_warper = TopKLogitsWarper(top_k=300, filter_value=float("-inf"))
@@ -282,7 +283,7 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
     
     for hs in output.hidden_states[0]:  # Обрабатываем по одному слою
         with torch.inference_mode():
-            curr_layer_logits = state["model"].lm_head(hs.to(torch.float16)).cpu()
+            curr_layer_logits = state["model"].lm_head(hs.to(torch.bfloat16)).cpu()
             print('1 ',   curr_layer_logits)
             logit_scores = torch.nn.functional.log_softmax(curr_layer_logits, dim=-1)
             print('2 ',   logit_scores)
@@ -444,7 +445,7 @@ def load_internvl_state(device="cuda"):
     model_name = model_path
     model = AutoModel.from_pretrained(
         model_path,
-        torch_dtype=torch.float16,
+        torch_dtype=torch.bfloat16,
         trust_remote_code=True
     ).eval().to(device)
     tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
