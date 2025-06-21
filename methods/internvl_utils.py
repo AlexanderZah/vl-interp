@@ -280,6 +280,7 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
     logits_warper = TopKLogitsWarper(top_k=50, filter_value=float("-inf"))
     logits_processor = LogitsProcessorList([])
     hidden_states = torch.stack(output.hidden_states[0])
+    print(hidden_states.shape)
     for hs in hidden_states:  # Обрабатываем по одному слою
         with torch.inference_mode():
             curr_layer_logits = state["model"].get_output_embeddings()(hs.to(torch.bfloat16)).cpu()
