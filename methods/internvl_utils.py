@@ -99,59 +99,88 @@ def generate_text_prompt(model, model_name, text_prompt, num_patches=1):
 
 
 def build_transform(input_size):
-    IMAGENET_MEAN = (0.485, 0.456, 0.406)
-    IMAGENET_STD = (0.229, 0.224, 0.225)
+    MEAN, STD = IMAGENET_MEAN, IMAGENET_STD
     transform = T.Compose([
-        T.Lambda(lambda img: img.convert('RGB')),
+        T.Lambda(lambda img: img.convert('RGB') if img.mode != 'RGB' else img),
         T.Resize((input_size, input_size), interpolation=InterpolationMode.BICUBIC),
         T.ToTensor(),
-        T.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)
+        T.Normalize(mean=MEAN, std=STD)
     ])
     return transform
 
-def load_images(img_path):
-    """
-    Load images from a list of file paths.
-    
-    Args:
-        image_files: List of paths to image files.
-    
-    Returns:
-        List of PIL.Image objects.
-    """
-    return Image.open(img_path).convert('RGB')
+def find_closest_aspect_ratio(aspect_ratio, target_ratios, width, height, image_size):
+    best_ratio_diff = float('inf')
+    best_ratio = (1, 1)
+    area = width * height
+    for ratio in target_ratios:
+        target_aspect_ratio = ratio[0] / ratio[1]
+        ratio_diff = abs(aspect_ratio - target_aspect_ratio)
+        if ratio_diff < best_ratio_diff:
+            best_ratio_diff = ratio_diff
+            best_ratio = ratio
+        elif ratio_diff == best_ratio_diff:
+            if area > 0.5 * image_size * image_size * ratio[0] * ratio[1]:
+                best_ratio = ratio
+    return best_ratio
+
+def dynamic_preprocess(image, min_num=1, max_num=12, image_size=448, use_thumbnail=False):
+    orig_width, orig_height = image.size
+    aspect_ratio = orig_width / orig_height
+
+    # calculate the existing image aspect ratio
+    target_ratios = set(
+        (i, j) for n in range(min_num, max_num + 1) for i in range(1, n + 1) for j in range(1, n + 1) if
+        i * j <= max_num and i * j >= min_num)
+    target_ratios = sorted(target_ratios, key=lambda x: x[0] * x[1])
+
+    # find the closest aspect ratio to the target
+    target_aspect_ratio = find_closest_aspect_ratio(
+        aspect_ratio, target_ratios, orig_width, orig_height, image_size)
+
+    # calculate the target width and height
+    target_width = image_size * target_aspect_ratio[0]
+    target_height = image_size * target_aspect_ratio[1]
+    blocks = target_aspect_ratio[0] * target_aspect_ratio[1]
+
+    # resize the image
+    resized_img = image.resize((target_width, target_height))
+    processed_images = []
+    for i in range(blocks):
+        box = (
+            (i % (target_width // image_size)) * image_size,
+            (i // (target_width // image_size)) * image_size,
+            ((i % (target_width // image_size)) + 1) * image_size,
+            ((i // (target_width // image_size)) + 1) * image_size
+        )
+        # split the image
+        split_img = resized_img.crop(box)
+        processed_images.append(split_img)
+    assert len(processed_images) == blocks
+    if use_thumbnail and len(processed_images) != 1:
+        thumbnail_img = image.resize((image_size, image_size))
+        processed_images.append(thumbnail_img)
+    return processed_images
+
+def load_image(image_file, input_size=448, max_num=12):
+    image = Image.open(image_file).convert('RGB')
+    transform = build_transform(input_size=input_size)
+    images = dynamic_preprocess(image, image_size=input_size, use_thumbnail=True, max_num=max_num)
+    pixel_values = [transform(image) for image in images]
+    pixel_values = torch.stack(pixel_values)
+    return pixel_values
+
 
 def generate_images_tensor(model, img_path, image_processor=None):
-    """
-    Generate a tensor of images for InternVL2_5-1B.
-    
-    Args:
-        model: The InternVLChatModel instance.
-        img_path: Path to the image file (str).
-        image_processor: Optional image processor (not used, kept for compatibility).
-    
-    Returns:
-        tuple: (images_tensor, images, image_sizes)
-            - images_tensor: Processed image tensor on the model's device.
-            - images: List of PIL.Image objects.
-            - image_sizes: List of original image sizes (width, height).
-    """
+
     # Загрузка изображений
     image_files = img_path
-    image = load_images(image_files)
-    image_sizes = 224 
+    images_tensor = load_images(image_files)
 
     # Получение размера изображения из конфигурации модели
     image_size = model.config.vision_config.image_size
-    print('model.config.vision_config.image_size ', image_size)
-    print('build_transform(image_sizes) ', image_sizes)
-    # Создание трансформации для обработки изображений
-    transform = build_transform(image_size)
 
-    # Обработка изображений
-    images_tensor = transform(image).unsqueeze(0).to(torch.float16).cuda()
 
-    return images_tensor, image, image_sizes
+    return images_tensor, None, image_size
 
 
 
@@ -282,69 +311,47 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
     # Декодирование выходных последовательностей
     output_ids = output.sequences
     caption = state["tokenizer"].batch_decode(output_ids, skip_special_tokens=True)[0].strip()
-    x = torch.stack(output.hidden_states[0]).max(dim=1).values.to('cuda')
 
-    logits = []
-    for i in range(x.shape[0]):
-        with torch.no_grad():
-            logits.append(state["model"].lm_head(x[i, :, :]).detach().cpu())
+    # Обработка скрытых состояний
+    hidden_states = torch.stack(output.hidden_states[0])
+    print(hidden_states.shape)
+    # Обработка логитов
+    logits_warper = TopKLogitsWarper(top_k=200, filter_value=float("-inf"))
+    logits_processor = LogitsProcessorList([])
     
-    logit_lens = torch.stack(logits)
-    
-    with torch.no_grad():
-        softmax_probs = torch.softmax(logit_lens, dim=-1)
-    
-    softmax_probs = softmax_probs.permute(2, 0, 1)
-    
+    with torch.inference_mode():
+        curr_layer_logits = state["model"].get_output_embeddings()(hidden_states).cpu().float()
+        print('curr_layer_logits ', curr_layer_logits)
+        logit_scores = torch.nn.functional.log_softmax(curr_layer_logits, dim=-1)
+        print('logit_scores ', logit_scores)
+        logit_scores_processed = logits_processor(input_ids, logit_scores)
+        print('logit_scores_processed ', logit_scores_processed)
+        logit_scores = logits_warper(input_ids, logit_scores_processed)
+        # logit_scores = torch.nan_to_num(logit_scores, neginf=0.0)  # заменим -inf на 0
+        # logit_scores = torch.abs(logit_scores)  # всё станет ≥ 0
+        print('logit_scores 2 ', logit_scores)
+        softmax_probs = torch.nn.functional.softmax(logit_scores, dim=-1)
+        print('softmax_probs ', softmax_probs)
+
+    softmax_probs = softmax_probs.detach().cpu().numpy()
+
+    # Находим индекс токена <IMG_CONTEXT> для выделения токенов изображения
+    img_context_token_id = state["tokenizer"].convert_tokens_to_ids(IMG_CONTEXT_TOKEN)
+    input_ids_list = input_ids.tolist()[0]
     try:
-        image_token_region = softmax_probs[:, :, 91:-12]
-    except Exception as e:
-        print(f"Warning: Error slicing token region: {e}")
-        print(f"Softmax probs shape: {softmax_probs.shape}")
-        image_token_region = softmax_probs
-    
-    image_token_region = image_token_region.detach().cpu().float().numpy()
-    return caption, image_token_region
-    # # Обработка скрытых состояний
-    # hidden_states = torch.stack(output.hidden_states[0])
-    # print(hidden_states.shape)
-    # # Обработка логитов
-    # logits_warper = TopKLogitsWarper(top_k=200, filter_value=float("-inf"))
-    # logits_processor = LogitsProcessorList([])
-    
-    # with torch.inference_mode():
-    #     curr_layer_logits = state["model"].get_output_embeddings()(hidden_states).cpu().float()
-    #     print('curr_layer_logits ', curr_layer_logits)
-    #     logit_scores = torch.nn.functional.log_softmax(curr_layer_logits, dim=-1)
-    #     print('logit_scores ', logit_scores)
-    #     logit_scores_processed = logits_processor(input_ids, logit_scores)
-    #     print('logit_scores_processed ', logit_scores_processed)
-    #     logit_scores = logits_warper(input_ids, logit_scores_processed)
-    #     # logit_scores = torch.nan_to_num(logit_scores, neginf=0.0)  # заменим -inf на 0
-    #     # logit_scores = torch.abs(logit_scores)  # всё станет ≥ 0
-    #     print('logit_scores 2 ', logit_scores)
-    #     softmax_probs = torch.nn.functional.softmax(logit_scores, dim=-1)
-    #     print('softmax_probs ', softmax_probs)
+        image_token_index = input_ids_list.index(img_context_token_id)
+    except ValueError:
+        raise ValueError(f"Token {IMG_CONTEXT_TOKEN} not found in input_ids.")
 
-    # softmax_probs = softmax_probs.detach().cpu().numpy()
+    # Выделяем вероятности для токенов изображения
+    num_image_tokens = state["model"].num_image_token * num_patches
+    softmax_probs = softmax_probs[
+        :, :, image_token_index:image_token_index + num_image_tokens
+    ]
 
-    # # Находим индекс токена <IMG_CONTEXT> для выделения токенов изображения
-    # img_context_token_id = state["tokenizer"].convert_tokens_to_ids(IMG_CONTEXT_TOKEN)
-    # input_ids_list = input_ids.tolist()[0]
-    # try:
-    #     image_token_index = input_ids_list.index(img_context_token_id)
-    # except ValueError:
-    #     raise ValueError(f"Token {IMG_CONTEXT_TOKEN} not found in input_ids.")
-
-    # # Выделяем вероятности для токенов изображения
-    # num_image_tokens = state["model"].num_image_token * num_patches
-    # softmax_probs = softmax_probs[
-    #     :, :, image_token_index:image_token_index + num_image_tokens
-    # ]
-
-    # # Транспонируем к форме (vocab_dim, num_layers, num_tokens)
-    # print("softmax_probs shape:", softmax_probs.shape)
-    # softmax_probs = softmax_probs.transpose(3, 0, 2, 1)
+    # Транспонируем к форме (vocab_dim, num_layers, num_tokens)
+    print("softmax_probs shape:", softmax_probs.shape)
+    softmax_probs = softmax_probs.transpose(3, 0, 2, 1)
 
     return caption, softmax_probs
 
