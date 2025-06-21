@@ -148,7 +148,7 @@ def generate_images_tensor(model, img_path, image_processor=None):
     transform = build_transform(image_size)
 
     # Обработка изображений
-    images_tensor = transform(image).unsqueeze(0).to(torch.bfloat16).cuda()
+    images_tensor = transform(image).unsqueeze(0).to(torch.float16).cuda()
 
     return images_tensor, image, image_sizes
 
@@ -249,8 +249,24 @@ def run_internvl_model(
 
 
 def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=1):
+    """
+    Retrieve caption and softmax probabilities for image tokens from InternVL2_5-1B.
+
+    Args:
+        state: Dictionary containing model, model_name, tokenizer, and optional image_processor.
+        img_path: Path to the image file (str).
+        text_prompt: Input text prompt (default: None, uses "Write a detailed description.").
+        num_patches: Number of image patches (default: 1).
+
+    Returns:
+        tuple: (caption, softmax_probs)
+            - caption: Decoded text output (str).
+            - softmax_probs: Softmax probabilities for image tokens, shape (vocab_dim, num_layers, num_tokens).
+    """
+    # Подготовка изображений
     pixel_values, images, image_sizes = generate_images_tensor(state["model"], img_path, image_processor=None)
-    
+
+    # Генерация выходных данных модели с hidden_states=True
     input_ids, output = run_internvl_model(
         state["model"],
         state["model_name"],
@@ -261,49 +277,45 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
         hidden_states=True,
         num_patches=num_patches
     )
-    
+
+    # Декодирование выходных последовательностей
     output_ids = output.sequences
     caption = state["tokenizer"].batch_decode(output_ids, skip_special_tokens=True)[0].strip()
+
+    # Обработка скрытых состояний
+    hidden_states = torch.stack(output.hidden_states[0][-3:])
+    print(hidden_states.shape)
+    # Обработка логитов
+    logits_warper = TopKLogitsWarper(top_k=10, filter_value=float("-inf"))
+    logits_processor = LogitsProcessorList([])
     
+    with torch.inference_mode():
+        curr_layer_logits = state["model"].get_output_embeddings()(hidden_states).to(torch.float16).cpu().float()
+        logit_scores = torch.nn.functional.log_softmax(curr_layer_logits, dim=-1)
+        logit_scores_processed = logits_processor(input_ids, logit_scores)
+        logit_scores = logits_warper(input_ids, logit_scores_processed)
+        softmax_probs = torch.nn.functional.softmax(logit_scores, dim=-1)
+
+    softmax_probs = softmax_probs.detach().cpu().numpy()
+
+    # Находим индекс токена <IMG_CONTEXT> для выделения токенов изображения
     img_context_token_id = state["tokenizer"].convert_tokens_to_ids(IMG_CONTEXT_TOKEN)
     input_ids_list = input_ids.tolist()[0]
     try:
         image_token_index = input_ids_list.index(img_context_token_id)
     except ValueError:
         raise ValueError(f"Token {IMG_CONTEXT_TOKEN} not found in input_ids.")
-    
-    num_image_tokens = state["model"].num_image_token * num_patches
-    print('0 ',   num_image_tokens)
-    print('image_token_index ',   image_token_index)
-    softmax_probs = []
-    
-    logits_warper = TopKLogitsWarper(top_k=50, filter_value=float("-inf"))
-    logits_processor = LogitsProcessorList([])
-    hidden_states = torch.stack(output.hidden_states[0])
-    print(hidden_states.shape)
-    for hs in hidden_states:  # Обрабатываем по одному слою
-        with torch.inference_mode():
-            curr_layer_logits = state["model"].get_output_embeddings()(hs.to(torch.bfloat16)).cpu()
-            print('1 ',   curr_layer_logits)
-            logit_scores = torch.nn.functional.log_softmax(curr_layer_logits, dim=-1)
-            print('2 ',   logit_scores)
-            # logit_scores_processed = logits_processor(input_ids, logit_scores)
-            # print('3 ',   logit_scores_processed)
-            # logit_scores = logits_warper(input_ids, logit_scores_processed)
-            print('logit_scores shape1 ', logit_scores.shape)
-            print('4 ',   logit_scores)
 
-            softmax_probs_layer = torch.nn.functional.softmax(logit_scores, dim=-1)
-            print('5 ', softmax_probs_layer)
-            print('softmax_probs_layer shape1 ', softmax_probs_layer.shape)
-            softmax_probs_layer = softmax_probs_layer[:, image_token_index:image_token_index + num_image_tokens]
-            print('softmax_probs_layer shape2 ', softmax_probs_layer.shape)
-            print('6 ', softmax_probs_layer)
-            softmax_probs.append(softmax_probs_layer.to(torch.float16).cpu().numpy())
-        del curr_layer_logits, logit_scores, logit_scores_processed, softmax_probs_layer
-    
-    softmax_probs = np.stack(softmax_probs).transpose(3, 0, 2, 1)
-    
+    # Выделяем вероятности для токенов изображения
+    num_image_tokens = state["model"].num_image_token * num_patches
+    softmax_probs = softmax_probs[
+        :, :, image_token_index:image_token_index + num_image_tokens
+    ]
+
+    # Транспонируем к форме (vocab_dim, num_layers, num_tokens)
+    print("softmax_probs shape:", softmax_probs.shape)
+    softmax_probs = softmax_probs.transpose(3, 0, 2, 1)
+
     return caption, softmax_probs
 
 
@@ -449,7 +461,7 @@ def load_internvl_state(device="cuda"):
     model_name = model_path
     model = AutoModel.from_pretrained(
         model_path,
-        torch_dtype=torch.bfloat16,
+        torch_dtype=torch.float16,
         trust_remote_code=True
     ).eval().to(device)
     tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
