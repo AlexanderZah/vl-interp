@@ -347,7 +347,7 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
     with torch.inference_mode():
         for layer_idx in range(hidden_states.shape[0]):
             hs = hidden_states[layer_idx]  # Shape: (batch_size, num_image_tokens, hidden_size)
-            logits = model.lm_head(hs).float()  # Shape: (batch_size, num_image_tokens, vocab_size)
+            logits = model.lm_head(hs)  # Shape: (batch_size, num_image_tokens, vocab_size)
             softmax_probs_layer = F.softmax(logits, dim=-1)  # Shape: (batch_size, num_image_tokens, vocab_size)
             softmax_probs.append(softmax_probs_layer.cpu().numpy())
             print(f"Layer {layer_idx} softmax min/max:", softmax_probs_layer.min().item(), softmax_probs_layer.max().item())
