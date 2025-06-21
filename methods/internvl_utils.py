@@ -274,7 +274,7 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
     """
     # Подготовка изображений
     pixel_values, images, image_sizes = generate_images_tensor(state["model"], img_path, image_processor=None)
-
+    state["model"].img_context_token_id = state["tokenizer"].convert_tokens_to_ids(IMG_CONTEXT_TOKEN)
     # Генерация выходных данных модели с hidden_states=True
     input_ids, output = run_internvl_model(
         state["model"],
