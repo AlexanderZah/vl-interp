@@ -357,7 +357,13 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
     print(f"Initial hidden_states sample (layer 0, batch 0, first 5 tokens): {hidden_states[0, 0, :5]}")
 
     # Извлекаем скрытые состояния только для визуальных токенов
-    hidden_states = hidden_states[:, :, image_token_index:image_token_index + num_image_tokens, :]  # Shape: (num_layers, batch_size, num_image_tokens, hidden_size)
+    image_token_indices = (input_ids[0] == img_context_token_id).nonzero(as_tuple=True)[0]
+    print(f"Using {len(image_token_indices)} visual tokens")
+
+    # Собираем скрытые состояния только по image токенам
+    hidden_states = hidden_states[:, 0, image_token_indices, :]  # shape: (num_layers, num_image_tokens, hidden_size)
+    hidden_states = hidden_states.unsqueeze(1)  # shape: (num_layers, batch_size=1, num_image_tokens, hidden_size)
+
     print(f"Sliced hidden_states shape: {hidden_states.shape}")
     print(f"Sliced hidden_states sample (layer 0, batch 0, first 5 tokens): {hidden_states[0, 0, :5]}")
 
