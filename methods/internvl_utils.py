@@ -283,7 +283,7 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
     caption = state["tokenizer"].batch_decode(output_ids, skip_special_tokens=True)[0].strip()
 
     # Обработка скрытых состояний
-    hidden_states = torch.stack(output.hidden_states[0][-10:])
+    hidden_states = torch.stack(output.hidden_states[0][-5:])
     print(hidden_states.shape)
     # Обработка логитов
     logits_warper = TopKLogitsWarper(top_k=10, filter_value=float("-inf"))
