@@ -318,22 +318,7 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
     # Обработка логитов
     logits_warper = TopKLogitsWarper(top_k=200, filter_value=float("-inf"))
     logits_processor = LogitsProcessorList([])
-    
-    with torch.inference_mode():
-        curr_layer_logits = state["model"].get_output_embeddings()(hidden_states).cpu().float()
-        print('curr_layer_logits ', curr_layer_logits)
-        logit_scores = torch.nn.functional.log_softmax(curr_layer_logits, dim=-1)
-        print('logit_scores ', logit_scores)
-        logit_scores_processed = logits_processor(input_ids, logit_scores)
-        print('logit_scores_processed ', logit_scores_processed)
-        logit_scores = logits_warper(input_ids, logit_scores_processed)
-        # logit_scores = torch.nan_to_num(logit_scores, neginf=0.0)  # заменим -inf на 0
-        # logit_scores = torch.abs(logit_scores)  # всё станет ≥ 0
-        print('logit_scores 2 ', logit_scores)
-        softmax_probs = torch.nn.functional.softmax(logit_scores, dim=-1)
-        print('softmax_probs ', softmax_probs)
 
-    softmax_probs = softmax_probs.detach().cpu().numpy()
 
     # Находим индекс токена <IMG_CONTEXT> для выделения токенов изображения
     img_context_token_id = state["tokenizer"].convert_tokens_to_ids(IMG_CONTEXT_TOKEN)
@@ -345,13 +330,34 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
 
     # Выделяем вероятности для токенов изображения
     num_image_tokens = state["model"].num_image_token * num_patches
-    softmax_probs = softmax_probs[
-        :, :, image_token_index:image_token_index + num_image_tokens
-    ]
+
+
+    softmax_probs = []
+    for hs in hidden_states:  # Обрабатываем по одному слою
+        with torch.inference_mode():
+            curr_layer_logits = state["model"].get_output_embeddings()(hs).cpu().float()
+            print('1 ',   curr_layer_logits)
+            logit_scores = torch.nn.functional.log_softmax(curr_layer_logits, dim=-1)
+            print('2 ',   logit_scores)
+            logit_scores_processed = logits_processor(input_ids, logit_scores)
+            print('3 ',   logit_scores_processed)
+            logit_scores = logits_warper(input_ids, logit_scores_processed)
+            
+            print('4 ',   logit_scores)
+            
+            softmax_probs_layer = torch.nn.functional.softmax(logit_scores, dim=-1)
+            print('5 ', softmax_probs_layer)
+            
+            softmax_probs_layer = softmax_probs_layer[:, image_token_index:image_token_index + num_image_tokens]
+            print('6 ', softmax_probs_layer)
+            softmax_probs.append(softmax_probs_layer.to(torch.float16).cpu().numpy())
+        del curr_layer_logits, logit_scores, logit_scores_processed, softmax_probs_layer
+
+    softmax_probs = softmax_probs.detach().cpu().numpy()
 
     # Транспонируем к форме (vocab_dim, num_layers, num_tokens)
     print("softmax_probs shape:", softmax_probs.shape)
-    softmax_probs = softmax_probs.transpose(3, 0, 2, 1)
+    softmax_probs = np.stack(softmax_probs).transpose(3, 0, 2, 1)
 
     return caption, softmax_probs
 
