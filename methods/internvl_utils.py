@@ -322,7 +322,7 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
 
     # Находим индекс токена <IMG_CONTEXT> для выделения токенов изображения
     img_context_token_id = state["tokenizer"].convert_tokens_to_ids(IMG_CONTEXT_TOKEN)
-    input_ids_list = input_ids.tolist()[0]
+    input_ids_list = input_ids.tolist()[-1]
     try:
         image_token_index = input_ids_list.index(img_context_token_id)
     except ValueError:
