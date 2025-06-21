@@ -543,7 +543,7 @@ def load_internvl_state(device="cuda"):
         dict: State containing model, tokenizer, vocabulary, embeddings, and helper functions.
     """
     # Загрузка модели и токенизатора
-    model_path = "OpenGVLab/InternVL2_5-2B"
+    model_path = "OpenGVLab/InternVL2_5-4B"
     model_name = model_path
     model = AutoModel.from_pretrained(
         model_path,
