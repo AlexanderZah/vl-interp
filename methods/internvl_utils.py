@@ -335,7 +335,7 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
     softmax_probs = []
     for hs in hidden_states:  # Обрабатываем по одному слою
         with torch.inference_mode():
-            logits = state["model"].lm_head(hs).cpu().float()
+            logits = state["model"].lm_head(hs).cpu()
             print('1 ',   logits)
             # logit_scores = torch.nn.functional.log_softmax(curr_layer_logits, dim=-1)
             # print('2 ',   logit_scores)
