@@ -289,8 +289,8 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
     logits_warper = TopKLogitsWarper(top_k=50, filter_value=float("-inf"))
     logits_processor = LogitsProcessorList([])
 
-    with torch.no_grad():
-        curr_layer_logits = state["model"].get_output_embeddings()(hidden_states)
+    with torch.inference_mode():
+        curr_layer_logits = state["model"].get_output_embeddings()(hidden_states).cpu().float()
         logit_scores = torch.nn.functional.log_softmax(curr_layer_logits, dim=-1)
         logit_scores_processed = logits_processor(input_ids, logit_scores)
         logit_scores = logits_warper(input_ids, logit_scores_processed)
@@ -376,7 +376,7 @@ def get_hidden_text_embedding_internvl(
     # Получаем attention_mask
     attention_mask = (input_ids != tokenizer.pad_token_id).long().to(device)
 
-    with torch.no_grad():
+    with torch.inference_mode():
         output = model.generate(
             input_ids=input_ids,
             attention_mask=attention_mask,
