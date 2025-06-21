@@ -148,7 +148,7 @@ def generate_images_tensor(model, img_path, image_processor=None):
     transform = build_transform(image_size)
 
     # Обработка изображений
-    images_tensor = transform(image).unsqueeze(0).to(torch.bfloat16).cuda()
+    images_tensor = transform(image).unsqueeze(0).to(torch.float16).cuda()
 
     return images_tensor, image, image_sizes
 
@@ -444,7 +444,7 @@ def load_internvl_state(device="cuda"):
     model_name = model_path
     model = AutoModel.from_pretrained(
         model_path,
-        torch_dtype=torch.bfloat16,
+        torch_dtype=torch.float16,
         trust_remote_code=True
     ).eval().to(device)
     tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
