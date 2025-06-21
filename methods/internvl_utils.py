@@ -379,6 +379,7 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
         for layer_idx in range(hidden_states.shape[0]):
             hs = hidden_states[layer_idx]  # Shape: (batch_size, num_image_tokens, hidden_size)
             print(f"Layer {layer_idx} hs shape: {hs.shape}")
+            print(f"[DEBUG] hs[0, :2, :5]:{hs[0, :2, :5]}")
             logits = model.lm_head(hs)  # Shape: (batch_size, num_image_tokens, vocab_size)
             print(f"Layer {layer_idx} logits shape: {logits.shape}")
             print(f"Layer {layer_idx} logits min/max: {logits.min().item()}, {logits.max().item()}")
