@@ -291,10 +291,16 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
 
     with torch.no_grad():
         curr_layer_logits = state["model"].get_output_embeddings()(hidden_states).cpu().float()
-        logit_scores = torch.nn.functional.log_softmax(curr_layer_logits, dim=-1)
-        logit_scores_processed = logits_processor(input_ids, logit_scores)
-        logit_scores = logits_warper(input_ids, logit_scores_processed)
-        softmax_probs = torch.nn.functional.softmax(logit_scores, dim=-1)
+        print(f"curr_layer_logits shape: {curr_layer_logits.shape}")
+        logit_scores = torch.nn.functional.log_softmax(curr_layer_logits, dim=-1)  # (num_layers, batch_size, seq_length, 
+        # Применяем logits_warper для каждого слоя отдельно
+        softmax_probs = []
+        for layer_idx in range(logit_scores.shape[0]):
+            layer_scores = logit_scores[layer_idx]  # (batch_size, seq_length, vocab_size)
+            layer_scores_warped = logits_warper(input_ids, layer_scores)  # (batch_size, seq_length, vocab_size)
+            layer_softmax = torch.nn.functional.softmax(layer_scores_warped, dim=-1)  # (batch_size, seq_length, vocab_size)
+            softmax_probs.append(layer_softmax)
+        softmax_probs = torch.stack(softmax_probs)  # (num_layers, batch_size, seq_length, vocab_size)
 
     softmax_probs = softmax_probs.detach().cpu().numpy()
 
