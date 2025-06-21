@@ -275,7 +275,7 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
     num_image_tokens = state["model"].num_image_token * num_patches
     print('0 ',   num_image_tokens)
     print('0image_token_index ',   image_token_index)
-    print('len output.hidden_states[0] ', len(output.hidden_states[0]))
+    print('len output.hidden_states ', len(output.hidden_states))
     softmax_probs = []
     
     logits_warper = TopKLogitsWarper(top_k=300, filter_value=float("-inf"))
