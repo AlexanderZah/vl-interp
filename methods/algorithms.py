@@ -104,7 +104,7 @@ def internal_confidence(tokenizer, softmax_probs, class_):
 
 
 def internal_confidence_heatmap(tokenizer, softmax_probs, class_):
-    class_token_indices = tokenizer.encode(class_)[1:]
+    class_token_indices = tokenizer.encode(class_)[0:]
     return softmax_probs[class_token_indices].max(axis=0).T
 
 
