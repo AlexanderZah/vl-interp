@@ -161,7 +161,7 @@ def dynamic_preprocess(image, min_num=1, max_num=12, image_size=448, use_thumbna
         processed_images.append(thumbnail_img)
     return processed_images
 
-def load_image(image_file, input_size=448, max_num=12):
+def load_image_internvl(image_file, input_size=448, max_num=12):
     image = Image.open(image_file).convert('RGB')
     transform = build_transform(input_size=input_size)
     images = dynamic_preprocess(image, image_size=input_size, use_thumbnail=True, max_num=max_num)
@@ -174,7 +174,7 @@ def generate_images_tensor(model, img_path, image_processor=None):
 
     # Загрузка изображений
     image_files = img_path
-    images_tensor = load_images(image_files)
+    images_tensor = load_image_internvl(image_files)
 
     # Получение размера изображения из конфигурации модели
     image_size = model.config.vision_config.image_size
