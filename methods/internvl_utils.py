@@ -285,7 +285,9 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
             logit_scores_processed = logits_processor(input_ids, logit_scores)
             logit_scores = logits_warper(input_ids, logit_scores_processed)
             softmax_probs_layer = torch.nn.functional.softmax(logit_scores, dim=-1)
+            print('1 ', softmax_probs_layer)
             softmax_probs_layer = softmax_probs_layer[:, image_token_index:image_token_index + num_image_tokens]
+            print('2 ', softmax_probs_layer)
             softmax_probs.append(softmax_probs_layer.to(torch.float16).cpu().numpy())
         del curr_layer_logits, logit_scores, logit_scores_processed, softmax_probs_layer
     
