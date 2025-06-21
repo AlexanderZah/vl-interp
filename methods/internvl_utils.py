@@ -3,7 +3,7 @@ from PIL import Image
 from io import BytesIO
 import torch
 from transformers import GenerationConfig, TopKLogitsWarper, LogitsProcessorList
-
+import gc
 from src.caption.internvl.InternVL.internvl_chat.internvl.train.constants import (
     
     IMG_CONTEXT_TOKEN,
@@ -352,6 +352,7 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
             softmax_probs.append(softmax_probs_layer.cpu().numpy())
             print(f"Layer {layer_idx} softmax min/max:", softmax_probs_layer.min().item(), softmax_probs_layer.max().item())
             del logits, softmax_probs_layer, hs
+            gc.collect()
     # Объединяем и транспонируем softmax_probs
     softmax_probs = np.stack(softmax_probs)  # Shape: (num_layers, batch_size, num_image_tokens, vocab_size)
     softmax_probs = softmax_probs.squeeze(1)  # Удаляем batch_size=1: (num_layers, num_image_tokens, vocab_size)
