@@ -281,13 +281,17 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
     for hs in output.hidden_states[0]:  # Обрабатываем по одному слою
         with torch.inference_mode():
             curr_layer_logits = state["model"].get_output_embeddings()(hs.to(torch.bfloat16)).cpu()
+            print('1 ',   curr_layer_logits)
             logit_scores = torch.nn.functional.log_softmax(curr_layer_logits, dim=-1)
+            print('2 ',   logit_scores)
             logit_scores_processed = logits_processor(input_ids, logit_scores)
+            print('3 ',   logit_scores_processed)
             logit_scores = logits_warper(input_ids, logit_scores_processed)
+            print('4 ',   logit_scores)
             softmax_probs_layer = torch.nn.functional.softmax(logit_scores, dim=-1)
-            print('1 ', softmax_probs_layer)
+            print('5 ', softmax_probs_layer)
             softmax_probs_layer = softmax_probs_layer[:, image_token_index:image_token_index + num_image_tokens]
-            print('2 ', softmax_probs_layer)
+            print('6 ', softmax_probs_layer)
             softmax_probs.append(softmax_probs_layer.to(torch.float16).cpu().numpy())
         del curr_layer_logits, logit_scores, logit_scores_processed, softmax_probs_layer
     
