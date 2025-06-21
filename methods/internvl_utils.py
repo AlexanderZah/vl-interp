@@ -213,7 +213,8 @@ def run_internvl_model(
     tokenizer,
     text_prompt=None,
     hidden_states=False,
-    num_patches=1
+    num_patches=1,
+    
 ):
     """
     Run the InternVL2_5-1B model to generate text based on an image and text prompt.
@@ -355,7 +356,7 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
     hidden_states = torch.stack(hidden_states)  # Shape: (num_layers, batch_size, seq_len, hidden_size)
     print(f"Initial hidden_states shape: {hidden_states.shape}")
     print(f"Initial hidden_states sample (layer 0, batch 0, first 5 tokens): {hidden_states[0, 0, :5]}")
-
+    print('output.logits', output.logits)
     # Извлекаем скрытые состояния только для визуальных токенов
     image_token_indices = (input_ids[0] == img_context_token_id).nonzero(as_tuple=True)[0]
     print(f"Using {len(image_token_indices)} visual tokens")
@@ -413,7 +414,7 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
 
     print("Final softmax_probs shape:", softmax_probs.shape)
     print("Final softmax_probs sample:", softmax_probs[:5, :5, :5])  # Отладочный вывод первых значений
-    return caption, softmax_probs
+    return caption, softmax_probs, output.logits
 
 
 
