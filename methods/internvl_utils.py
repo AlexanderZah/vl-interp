@@ -29,7 +29,7 @@ from torchvision.transforms.functional import InterpolationMode
 # Константы для нормализации изображений (из InternVL)
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
-
+import torch.nn.functional as F
 from PIL import Image
 import requests
 from io import BytesIO
@@ -239,7 +239,7 @@ def run_internvl_model(
     
     # Токенизация промпта
     input_ids = prompt_to_img_input_ids(prompt, tokenizer, device=model.device)
-    
+    print('input_ids ', input_ids)
     # Получаем шаблон разговора для определения стоп-токена
     template = get_conv_template(model.template)
     stop_str = template.sep.strip()
@@ -335,23 +335,23 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
     softmax_probs = []
     for hs in hidden_states:  # Обрабатываем по одному слою
         with torch.inference_mode():
-            curr_layer_logits = state["model"].get_output_embeddings()(hs).cpu().float()
-            print('1 ',   curr_layer_logits)
-            logit_scores = torch.nn.functional.log_softmax(curr_layer_logits, dim=-1)
-            print('2 ',   logit_scores)
-            logit_scores_processed = logits_processor(input_ids, logit_scores)
-            print('3 ',   logit_scores_processed)
-            logit_scores = logits_warper(input_ids, logit_scores_processed)
+            logits = state["model"].lm_head(hs).cpu().float()
+            print('1 ',   logits)
+            # logit_scores = torch.nn.functional.log_softmax(curr_layer_logits, dim=-1)
+            # print('2 ',   logit_scores)
+            # logit_scores_processed = logits_processor(input_ids, logit_scores)
+            # print('3 ',   logit_scores_processed)
+            # logit_scores = logits_warper(input_ids, logit_scores_processed)
             
-            print('4 ',   logit_scores)
+            # print('4 ',   logit_scores)
             
-            softmax_probs_layer = torch.nn.functional.softmax(logit_scores, dim=-1)
+            softmax_probs_layer = F.softmax(logits, dim=-1)
             print('5 ', softmax_probs_layer)
             
             softmax_probs_layer = softmax_probs_layer[:, image_token_index:image_token_index + num_image_tokens]
             print('6 ', softmax_probs_layer)
             softmax_probs.append(softmax_probs_layer.to(torch.float16).cpu().numpy())
-        del curr_layer_logits, logit_scores, logit_scores_processed, softmax_probs_layer
+        del logits, softmax_probs_layer
 
     # Транспонируем к форме (vocab_dim, num_layers, num_tokens)
     print("softmax_probs shape:", softmax_probs.shape)
