@@ -112,7 +112,8 @@ def run_llava_model(
     stop_str = conv.sep if conv.sep_style != SeparatorStyle.TWO else conv.sep2
     keywords = [stop_str]
     stopping_criteria = KeywordsStoppingCriteria(keywords, tokenizer, input_ids)
-
+    print(type(stopping_criteria))
+    print(stopping_criteria.keys())
     with torch.inference_mode():
         output = model.generate(
             input_ids,

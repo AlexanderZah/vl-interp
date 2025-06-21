@@ -3,3 +3,4 @@ plots
 src/__pycache__/*
 demos/.ipynb_checkpoints/*
 metric/__pycache__/*
+venv
