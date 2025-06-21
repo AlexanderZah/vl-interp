@@ -352,26 +352,18 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
         raise ValueError(f"Expected {num_image_tokens} image tokens, found {len(image_token_indices)}.")
 
     # Обработка скрытых состояний
-    hidden_states_per_layer = output.hidden_states[1]  # Пропускаем входной (embedding)
-    hidden_states = torch.stack(hidden_states_per_layer)  # (num_layers, batch, seq_len, hidden_size)
+    hidden_states = output.hidden_states[0]  # Кортеж тензоров для первого шага
+    hidden_states = torch.stack(hidden_states)  # Shape: (num_layers, batch_size, seq_len, hidden_size)
     print(f"Initial hidden_states shape: {hidden_states.shape}")
     print(f"Initial hidden_states sample (layer 0, batch 0, first 5 tokens): {hidden_states[0, 0, :5]}")
-    print('output.logits', output.logits)
+    print('output.logits', output.keys())
     # Извлекаем скрытые состояния только для визуальных токенов
     image_token_indices = (input_ids[0] == img_context_token_id).nonzero(as_tuple=True)[0]
     print(f"Using {len(image_token_indices)} visual tokens")
 
-    # Собираем скрытые состояния только по image токенам
-    hidden_states = hidden_states[:, 0, image_token_indices, :]  # shape: (num_layers, num_image_tokens, hidden_size)
-    hidden_states = hidden_states.unsqueeze(1)  # shape: (num_layers, batch_size=1, num_image_tokens, hidden_size)
-
-    print(f"Sliced hidden_states shape: {hidden_states.shape}")
-    print(f"Sliced hidden_states sample (layer 0, batch 0, first 5 tokens): {hidden_states[0, 0, :5]}")
 
     # Обработка логитов
     softmax_probs = []
-    batch_size = hidden_states.shape[1]
-    print(f"Batch size: {batch_size}")
     vocab_size = model.language_model.config.vocab_size
     print(f"Vocabulary size: {vocab_size}")
 
@@ -387,17 +379,6 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
             print(f"Layer {layer_idx} softmax_probs_layer shape: {softmax_probs_layer.shape}")
             print(f"Layer {layer_idx} softmax min/max: {softmax_probs_layer.min().item()}, {softmax_probs_layer.max().item()}")
 
-            # Анализ топ-токенов
-            if batch_size > 0:
-                if batch_size > 1:
-                    sample_idx = 0  # Берем первый элемент батча
-                else:
-                    sample_idx = 0  # Для batch_size=1 работаем с первым (и единственным) элементом
-                top_k = min(5, softmax_probs_layer.shape[1])  # Берем минимальное из 5 или числа токенов
-                top_indices = softmax_probs_layer[sample_idx].argsort(dim=-1)[:, -top_k:].flip(-1)  # Топ-индексы по vocab_size
-                top_values, top_tokens = softmax_probs_layer[sample_idx, :, top_indices[0]].max(dim=-1)
-                print(f"Layer {layer_idx} Top tokens: {[tokenizer.decode([t.item()]) for t in top_tokens]}")
-                print(f"Layer {layer_idx} Top values: {top_values[:5].tolist()}")
 
             softmax_probs.append(softmax_probs_layer.cpu().numpy())
             del logits, softmax_probs_layer, hs
