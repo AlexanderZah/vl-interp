@@ -138,8 +138,8 @@ def generate_images_tensor(model, img_path, image_processor=None):
     """
     # Загрузка изображений
     image_files = img_path
-    images = load_images(image_files)
-    image_sizes = [x.size for x in images]
+    image = load_images(image_files)
+    image_sizes = image.size
 
     # Получение размера изображения из конфигурации модели
     image_size = model.config.vision_config.image_size
@@ -148,9 +148,9 @@ def generate_images_tensor(model, img_path, image_processor=None):
     transform = build_transform(image_size)
 
     # Обработка изображений
-    images_tensor = transform(images).unsqueeze(0).to(torch.bfloat16).cuda()
+    images_tensor = transform(image).unsqueeze(0).to(torch.bfloat16).cuda()
 
-    return images_tensor, images, image_sizes
+    return images_tensor, image, image_sizes
 
 
 
