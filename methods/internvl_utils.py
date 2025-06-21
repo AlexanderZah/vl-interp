@@ -291,10 +291,17 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
     Returns:
         tuple: (caption, softmax_probs)
             - caption: Decoded text output (str).
-            - softmax_probs: Softmax probabilities for image tokens, shape (vocab_dim, num_layers, num_tokens).
+            - softmax_probs: Softmax probabilities for image tokens, shape (vocab_size, num_layers, num_tokens).
     """
+    model = state["model"]
+    tokenizer = state["tokenizer"]
+    image_processor = state.get("image_processor", None)
+    device = next(model.parameters()).device
+
     # Подготовка изображений
-    pixel_values, images, image_sizes = generate_images_tensor(state["model"], img_path, image_processor=None, num_patches=num_patches)
+    pixel_values, images, image_sizes = generate_images_tensor(
+        state["model"], img_path, image_processor=image_processor, num_patches=num_patches
+    )
 
     # Генерация выходных данных модели с hidden_states=True
     input_ids, output = run_internvl_model(
@@ -310,53 +317,48 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
 
     # Декодирование выходных последовательностей
     output_ids = output.sequences
-    caption = state["tokenizer"].batch_decode(output_ids, skip_special_tokens=True)[0].strip()
-
-    # Обработка скрытых состояний
-    hidden_states = torch.stack(output.hidden_states[0])
-    print('output.hidden_states ', len(output.hidden_states))
-    # Обработка логитов
-    logits_warper = TopKLogitsWarper(top_k=200, filter_value=float("-inf"))
-    logits_processor = LogitsProcessorList([])
-
+    caption = tokenizer.batch_decode(output_ids, skip_special_tokens=True)[0].strip()
 
     # Находим индекс токена <IMG_CONTEXT> для выделения токенов изображения
-    img_context_token_id = state["tokenizer"].convert_tokens_to_ids(IMG_CONTEXT_TOKEN)
-    input_ids_list = input_ids.tolist()[-1]
+    img_context_token_id = tokenizer.convert_tokens_to_ids(IMG_CONTEXT_TOKEN)
+    input_ids_list = input_ids[0].tolist()  # Берем первый элемент батча
     try:
         image_token_index = input_ids_list.index(img_context_token_id)
     except ValueError:
         raise ValueError(f"Token {IMG_CONTEXT_TOKEN} not found in input_ids.")
 
-    # Выделяем вероятности для токенов изображения
-    num_image_tokens = state["model"].num_image_token * num_patches
+    # Вычисляем количество токенов изображения
+    num_image_tokens = model.num_image_token * num_patches
 
+    # Проверяем, что все токены изображения присутствуют
+    image_token_indices = (input_ids[0] == img_context_token_id).nonzero(as_tuple=True)[0]
+    if len(image_token_indices) < num_image_tokens:
+        raise ValueError(f"Expected {num_image_tokens} image tokens, found {len(image_token_indices)}.")
 
+    # Обработка скрытых состояний
+    hidden_states = output.hidden_states[0]  # Кортеж тензоров для первого шага
+    hidden_states = torch.stack(hidden_states)  # Shape: (num_layers, batch_size, seq_len, hidden_size)
+
+    # Извлекаем скрытые состояния только для визуальных токенов
+    hidden_states = hidden_states[:, :, image_token_index:image_token_index + num_image_tokens, :]  # Shape: (num_layers, batch_size, num_image_tokens, hidden_size)
+
+    # Обработка логитов
     softmax_probs = []
-    for hs in hidden_states:  # Обрабатываем по одному слою
-        with torch.inference_mode():
-            logits = state["model"].lm_head(hs).cpu()
-            print('1 ',   logits)
-            # logit_scores = torch.nn.functional.log_softmax(curr_layer_logits, dim=-1)
-            # print('2 ',   logit_scores)
-            # logit_scores_processed = logits_processor(input_ids, logit_scores)
-            # print('3 ',   logit_scores_processed)
-            # logit_scores = logits_warper(input_ids, logit_scores_processed)
-            
-            # print('4 ',   logit_scores)
-            
-            softmax_probs_layer = F.softmax(logits, dim=-1)
-            print('5 ', softmax_probs_layer)
-            
-            softmax_probs_layer = softmax_probs_layer[:, image_token_index:image_token_index + num_image_tokens]
-            print('6 ', softmax_probs_layer)
+    with torch.inference_mode():
+        for layer_idx in range(hidden_states.shape[0]):
+            hs = hidden_states[layer_idx]  # Shape: (batch_size, num_image_tokens, hidden_size)
+            logits = model.lm_head(hs).float()  # Shape: (batch_size, num_image_tokens, vocab_size)
+            softmax_probs_layer = F.softmax(logits, dim=-1)  # Shape: (batch_size, num_image_tokens, vocab_size)
             softmax_probs.append(softmax_probs_layer.cpu().numpy())
+            print(f"Layer {layer_idx} softmax min/max:", softmax_probs_layer.min().item(), softmax_probs_layer.max().item())
         del logits, softmax_probs_layer
+    # Объединяем и транспонируем softmax_probs
+    softmax_probs = np.stack(softmax_probs)  # Shape: (num_layers, batch_size, num_image_tokens, vocab_size)
+    softmax_probs = softmax_probs.squeeze(1)  # Удаляем batch_size=1: (num_layers, num_image_tokens, vocab_size)
+    softmax_probs = softmax_probs.transpose(2, 0, 1)  # Shape: (vocab_size, num_layers, num_image_tokens)
 
-    # Транспонируем к форме (vocab_dim, num_layers, num_tokens)
-    
-    softmax_probs = np.stack(softmax_probs).transpose(3, 0, 2, 1)
     print("softmax_probs shape:", softmax_probs.shape)
+    print("softmax_probs sample:", softmax_probs[:5, :5, :5])  # Отладочный вывод первых значений
     return caption, softmax_probs
 
 
