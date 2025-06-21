@@ -283,12 +283,12 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
     caption = state["tokenizer"].batch_decode(output_ids, skip_special_tokens=True)[0].strip()
 
     # Обработка скрытых состояний
-    hidden_states = torch.stack(output.hidden_states[0])
+    hidden_states = output.hidden_states[0][-1].unsqueeze(0)
     print(hidden_states.shape)
     # Обработка логитов
     logits_warper = TopKLogitsWarper(top_k=10, filter_value=float("-inf"))
     logits_processor = LogitsProcessorList([])
-
+    
     with torch.inference_mode():
         curr_layer_logits = state["model"].get_output_embeddings()(hidden_states).to(torch.bfloat16).cpu().float()
         logit_scores = torch.nn.functional.log_softmax(curr_layer_logits, dim=-1)
