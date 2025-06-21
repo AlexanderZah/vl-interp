@@ -227,7 +227,7 @@ def run_internvl_model(
     # Получаем attention_mask из токенизатора
     attention_mask = (input_ids != tokenizer.pad_token_id).long().to(model.device)
 
-    with torch.no_grad():
+    with torch.inference_mode():
         output = model.generate(
             pixel_values=pixel_values,
             input_ids=input_ids,
@@ -286,7 +286,7 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
     hidden_states = torch.stack(output.hidden_states[0])
 
     # Обработка логитов
-    logits_warper = TopKLogitsWarper(top_k=50, filter_value=float("-inf"))
+    logits_warper = TopKLogitsWarper(top_k=10, filter_value=float("-inf"))
     logits_processor = LogitsProcessorList([])
 
     with torch.inference_mode():
