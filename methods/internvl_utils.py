@@ -278,6 +278,13 @@ def run_internvl_model(
     return outputs
 
 
+import torch
+import torch.nn.functional as F
+import numpy as np
+import gc
+
+IMG_CONTEXT_TOKEN = "<IMG_CONTEXT>"
+
 def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=1):
     """
     Retrieve caption and softmax probabilities for image tokens from InternVL2_5-1B.
@@ -302,6 +309,8 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
     pixel_values, images, image_sizes = generate_images_tensor(
         state["model"], img_path, image_processor=image_processor, num_patches=num_patches
     )
+    print(f"pixel_values shape: {pixel_values.shape}")
+    print(f"image_sizes: {image_sizes}")
 
     # Генерация выходных данных модели с hidden_states=True
     input_ids, output = run_internvl_model(
@@ -314,55 +323,93 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
         hidden_states=True,
         num_patches=num_patches
     )
+    print(f"input_ids shape: {input_ids.shape}")
+    print(f"input_ids sample: {input_ids[0][:10]}...")  # Первые 10 токенов для отладки
 
     # Декодирование выходных последовательностей
     output_ids = output.sequences
     caption = tokenizer.batch_decode(output_ids, skip_special_tokens=True)[0].strip()
+    print(f"Caption: {caption}")
 
     # Находим индекс токена <IMG_CONTEXT> для выделения токенов изображения
     img_context_token_id = tokenizer.convert_tokens_to_ids(IMG_CONTEXT_TOKEN)
     input_ids_list = input_ids[0].tolist()  # Берем первый элемент батча
     try:
         image_token_index = input_ids_list.index(img_context_token_id)
+        print(f"Image token index: {image_token_index}")
     except ValueError:
         raise ValueError(f"Token {IMG_CONTEXT_TOKEN} not found in input_ids.")
 
     # Вычисляем количество токенов изображения
     num_image_tokens = model.num_image_token * num_patches
+    print(f"num_image_tokens: {num_image_tokens}")
 
     # Проверяем, что все токены изображения присутствуют
     image_token_indices = (input_ids[0] == img_context_token_id).nonzero(as_tuple=True)[0]
+    print(f"Found image token indices: {len(image_token_indices)}")
     if len(image_token_indices) < num_image_tokens:
         raise ValueError(f"Expected {num_image_tokens} image tokens, found {len(image_token_indices)}.")
 
     # Обработка скрытых состояний
     hidden_states = output.hidden_states[0]  # Кортеж тензоров для первого шага
     hidden_states = torch.stack(hidden_states)  # Shape: (num_layers, batch_size, seq_len, hidden_size)
-    print('hidden_states ', hidden_states)
+    print(f"Initial hidden_states shape: {hidden_states.shape}")
+    print(f"Initial hidden_states sample (layer 0, batch 0, first 5 tokens): {hidden_states[0, 0, :5]}")
+
     # Извлекаем скрытые состояния только для визуальных токенов
     hidden_states = hidden_states[:, :, image_token_index:image_token_index + num_image_tokens, :]  # Shape: (num_layers, batch_size, num_image_tokens, hidden_size)
-    print('hidden_states ', hidden_states)
+    print(f"Sliced hidden_states shape: {hidden_states.shape}")
+    print(f"Sliced hidden_states sample (layer 0, batch 0, first 5 tokens): {hidden_states[0, 0, :5]}")
+
     # Обработка логитов
     softmax_probs = []
+    batch_size = hidden_states.shape[1]
+    print(f"Batch size: {batch_size}")
+    vocab_size = model.language_model.config.vocab_size
+    print(f"Vocabulary size: {vocab_size}")
+
     with torch.inference_mode():
         for layer_idx in range(hidden_states.shape[0]):
             hs = hidden_states[layer_idx]  # Shape: (batch_size, num_image_tokens, hidden_size)
+            print(f"Layer {layer_idx} hs shape: {hs.shape}")
             logits = model.lm_head(hs)  # Shape: (batch_size, num_image_tokens, vocab_size)
+            print(f"Layer {layer_idx} logits shape: {logits.shape}")
+            print(f"Layer {layer_idx} logits min/max: {logits.min().item()}, {logits.max().item()}")
             softmax_probs_layer = F.softmax(logits, dim=-1)  # Shape: (batch_size, num_image_tokens, vocab_size)
+            print(f"Layer {layer_idx} softmax_probs_layer shape: {softmax_probs_layer.shape}")
+            print(f"Layer {layer_idx} softmax min/max: {softmax_probs_layer.min().item()}, {softmax_probs_layer.max().item()}")
+
+            # Анализ топ-токенов
+            if batch_size > 0:
+                if batch_size > 1:
+                    sample_idx = 0  # Берем первый элемент батча
+                else:
+                    sample_idx = 0  # Для batch_size=1 работаем с первым (и единственным) элементом
+                top_k = min(5, softmax_probs_layer.shape[1])  # Берем минимальное из 5 или числа токенов
+                top_indices = softmax_probs_layer[sample_idx].argsort(dim=-1)[:, -top_k:].flip(-1)  # Топ-индексы по vocab_size
+                top_values, top_tokens = softmax_probs_layer[sample_idx, :, top_indices[0]].max(dim=-1)
+                print(f"Layer {layer_idx} Top tokens: {[tokenizer.decode([t.item()]) for t in top_tokens]}")
+                print(f"Layer {layer_idx} Top values: {top_values[:5].tolist()}")
+
             softmax_probs.append(softmax_probs_layer.cpu().numpy())
-            print(f"Layer {layer_idx} softmax min/max:", softmax_probs_layer.min().item(), softmax_probs_layer.max().item())
-            top_tokens = softmax_probs_layer[0].argsort()[-5:][::-1]
-            print(f"Top tokens at layer {layer_idx}:", [tokenizer.decode([t]) for t in top_tokens])
             del logits, softmax_probs_layer, hs
             gc.collect()
+
     # Объединяем и транспонируем softmax_probs
     softmax_probs = np.stack(softmax_probs)  # Shape: (num_layers, batch_size, num_image_tokens, vocab_size)
-    # softmax_probs = softmax_probs.squeeze(1)  # Удаляем batch_size=1: (num_layers, num_image_tokens, vocab_size)
-    softmax_probs = softmax_probs.transpose(3, 0, 2, 1)  # Shape: (vocab_size, num_layers, num_image_tokens)
+    print(f"Stacked softmax_probs shape: {softmax_probs.shape}")
+    softmax_probs = softmax_probs.transpose(3, 0, 2, 1)  # Shape: (vocab_size, num_layers, num_image_tokens, batch_size)
+    print(f"Transposed softmax_probs shape: {softmax_probs.shape}")
 
-    print("softmax_probs shape:", softmax_probs.shape)
-    print("softmax_probs sample:", softmax_probs[:5, :5, :5])  # Отладочный вывод первых значений
+    if batch_size == 1:
+        softmax_probs = softmax_probs.squeeze(-1)  # Удаляем batch_size=1: (vocab_size, num_layers, num_image_tokens)
+        print(f"Squeezed softmax_probs shape (if batch_size=1): {softmax_probs.shape}")
+
+    print("Final softmax_probs shape:", softmax_probs.shape)
+    print("Final softmax_probs sample:", softmax_probs[:5, :5, :5])  # Отладочный вывод первых значений
     return caption, softmax_probs
+
+
 
 
 def reshape_internvl_prompt_hidden_layers(hidden_states):
