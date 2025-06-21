@@ -143,7 +143,8 @@ def generate_images_tensor(model, img_path, image_processor=None):
 
     # Получение размера изображения из конфигурации модели
     image_size = model.config.vision_config.image_size
-    print('image_size ', image_size)
+    print('model.config.vision_config.image_size ', image_size)
+    print('build_transform(image_sizes) ' , image_sizes)
     # Создание трансформации для обработки изображений
     transform = build_transform(image_sizes)
 
