@@ -99,17 +99,10 @@ def generate_text_prompt(model, model_name, text_prompt, num_patches=1):
 
 
 def build_transform(input_size):
-    """
-    Build image transformation pipeline for InternVL2_5-1B.
-    
-    Args:
-        input_size: Target size for resizing images (int).
-    
-    Returns:
-        torchvision.transforms.Compose: Transformation pipeline.
-    """
+    IMAGENET_MEAN = (0.485, 0.456, 0.406)
+    IMAGENET_STD = (0.229, 0.224, 0.225)
     transform = T.Compose([
-        T.Lambda(lambda img: img.convert('RGB') if img.mode != 'RGB' else img),
+        T.Lambda(lambda img: img.convert('RGB')),
         T.Resize((input_size, input_size), interpolation=InterpolationMode.BICUBIC),
         T.ToTensor(),
         T.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)
@@ -156,7 +149,7 @@ def generate_images_tensor(model, img_path, image_processor=None):
 
     # Обработка изображений
     images_tensor = torch.stack([transform(img) for img in images]).to(
-        model.device, dtype=torch.float16
+        model.device, dtype=torch.bfloat16
     )
 
     return images_tensor, images, image_sizes
