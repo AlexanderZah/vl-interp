@@ -170,11 +170,11 @@ def load_image_internvl(image_file, input_size=448, max_num=12):
     return pixel_values
 
 
-def generate_images_tensor(model, img_path, image_processor=None):
+def generate_images_tensor(model, img_path, image_processor=None, num_patches=1):
 
     # Загрузка изображений
     image_files = img_path
-    images_tensor = load_image_internvl(image_files).to(torch.float16).cuda()
+    images_tensor = load_image_internvl(image_files, max_num=num_patches).to(torch.float16).cuda()
     print(images_tensor.shape)
     # Получение размера изображения из конфигурации модели
     image_size = model.config.vision_config.image_size
@@ -294,7 +294,7 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
             - softmax_probs: Softmax probabilities for image tokens, shape (vocab_dim, num_layers, num_tokens).
     """
     # Подготовка изображений
-    pixel_values, images, image_sizes = generate_images_tensor(state["model"], img_path, image_processor=None)
+    pixel_values, images, image_sizes = generate_images_tensor(state["model"], img_path, image_processor=None, num_patches=num_patches)
 
     # Генерация выходных данных модели с hidden_states=True
     input_ids, output = run_internvl_model(
