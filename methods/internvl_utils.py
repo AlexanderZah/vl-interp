@@ -354,8 +354,9 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
         del logits, softmax_probs_layer
 
     # Транспонируем к форме (vocab_dim, num_layers, num_tokens)
-    print("softmax_probs shape:", softmax_probs.shape)
+    
     softmax_probs = np.stack(softmax_probs).transpose(3, 0, 2, 1)
+    print("softmax_probs shape:", softmax_probs.shape)
     return caption, softmax_probs
 
 
