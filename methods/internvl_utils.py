@@ -148,9 +148,7 @@ def generate_images_tensor(model, img_path, image_processor=None):
     transform = build_transform(image_size)
 
     # Обработка изображений
-    images_tensor = torch.stack([transform(img) for img in images]).to(
-        model.device, dtype=torch.bfloat16
-    )
+    images_tensor = transform(images).unsqueeze(0).to(torch.bfloat16).cuda()
 
     return images_tensor, images, image_sizes
 
