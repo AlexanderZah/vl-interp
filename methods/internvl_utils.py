@@ -338,10 +338,10 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
     # Обработка скрытых состояний
     hidden_states = output.hidden_states[0]  # Кортеж тензоров для первого шага
     hidden_states = torch.stack(hidden_states)  # Shape: (num_layers, batch_size, seq_len, hidden_size)
-
+    print('hidden_states ', hidden_states)
     # Извлекаем скрытые состояния только для визуальных токенов
     hidden_states = hidden_states[:, :, image_token_index:image_token_index + num_image_tokens, :]  # Shape: (num_layers, batch_size, num_image_tokens, hidden_size)
-
+    print('hidden_states ', hidden_states)
     # Обработка логитов
     softmax_probs = []
     with torch.inference_mode():
@@ -351,6 +351,8 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
             softmax_probs_layer = F.softmax(logits, dim=-1)  # Shape: (batch_size, num_image_tokens, vocab_size)
             softmax_probs.append(softmax_probs_layer.cpu().numpy())
             print(f"Layer {layer_idx} softmax min/max:", softmax_probs_layer.min().item(), softmax_probs_layer.max().item())
+            top_tokens = softmax_probs_layer[0].argsort()[-5:][::-1]
+            print(f"Top tokens at layer {layer_idx}:", [tokenizer.decode([t]) for t in top_tokens])
             del logits, softmax_probs_layer, hs
             gc.collect()
     # Объединяем и транспонируем softmax_probs
