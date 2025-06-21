@@ -277,7 +277,7 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
     print('0image_token_index ',   image_token_index)
     softmax_probs = []
     
-    logits_warper = TopKLogitsWarper(top_k=50, filter_value=float("-inf"))
+    logits_warper = TopKLogitsWarper(top_k=300, filter_value=float("-inf"))
     logits_processor = LogitsProcessorList([])
     
     for hs in output.hidden_states[0]:  # Обрабатываем по одному слою
