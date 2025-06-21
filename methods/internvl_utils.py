@@ -145,7 +145,7 @@ def generate_images_tensor(model, img_path, image_processor=None):
     image_size = model.config.vision_config.image_size
 
     # Создание трансформации для обработки изображений
-    transform = build_transform(image_size)
+    transform = build_transform(image_sizes)
 
     # Обработка изображений
     images_tensor = transform(image).unsqueeze(0).to(torch.float16).cuda()
