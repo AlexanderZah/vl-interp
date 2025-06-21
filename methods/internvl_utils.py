@@ -174,7 +174,7 @@ def generate_images_tensor(model, img_path, image_processor=None, num_patches=1)
 
     # Загрузка изображений
     image_files = img_path
-    images_tensor = load_image_internvl(image_files, max_num=num_patches).to(torch.float8).cuda()
+    images_tensor = load_image_internvl(image_files, max_num=num_patches).to(torch.float16).cuda()
     print(images_tensor.shape)
     # Получение размера изображения из конфигурации модели
     image_size = model.config.vision_config.image_size
@@ -498,7 +498,7 @@ def load_internvl_state(device="cuda"):
     model_name = model_path
     model = AutoModel.from_pretrained(
         model_path,
-        torch_dtype=torch.float8,
+        torch_dtype=torch.float16,
         load_in_4bit=True,
         low_cpu_mem_usage=True,
         trust_remote_code=True
