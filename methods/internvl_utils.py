@@ -352,7 +352,7 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
         raise ValueError(f"Expected {num_image_tokens} image tokens, found {len(image_token_indices)}.")
 
     # Обработка скрытых состояний
-    hidden_states = output.hidden_states[0]  # Кортеж тензоров для первого шага
+    hidden_states = output.hidden_states[-1]  # Кортеж тензоров для первого шага
     hidden_states = torch.stack(hidden_states)  # Shape: (num_layers, batch_size, seq_len, hidden_size)
     print(f"Initial hidden_states shape: {hidden_states.shape}")
     print(f"Initial hidden_states sample (layer 0, batch 0, first 5 tokens): {hidden_states[0, 0, :5]}")
