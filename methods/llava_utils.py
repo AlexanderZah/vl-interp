@@ -252,7 +252,7 @@ def get_caption_from_llava(
 
 
 def load_llava_state(device="cuda"):
-    model_path = "liuhaotian/llava-v1.5-7b"
+    model_path = "LanguageBind/MoE-LLaVA-StableLM-1.6B-4e"
     model_name = get_model_name_from_path(model_path)
     tokenizer, model, image_processor, context_len = load_pretrained_model(
         model_path, None, model_name, device=device
