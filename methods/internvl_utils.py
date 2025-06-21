@@ -282,47 +282,69 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
     # Декодирование выходных последовательностей
     output_ids = output.sequences
     caption = state["tokenizer"].batch_decode(output_ids, skip_special_tokens=True)[0].strip()
+    x = torch.stack(output.hidden_states[0]).max(dim=1).values.to('cuda')
 
-    # Обработка скрытых состояний
-    hidden_states = torch.stack(output.hidden_states[0])
-    print(hidden_states.shape)
-    # Обработка логитов
-    logits_warper = TopKLogitsWarper(top_k=200, filter_value=float("-inf"))
-    logits_processor = LogitsProcessorList([])
+    logits = []
+    for i in range(x.shape[0]):
+        with torch.no_grad():
+            logits.append(state["model"].lm_head(x[i, :, :]).detach().cpu())
     
-    with torch.inference_mode():
-        curr_layer_logits = state["model"].get_output_embeddings()(hidden_states).cpu().float()
-        print('curr_layer_logits ', curr_layer_logits)
-        logit_scores = torch.nn.functional.log_softmax(curr_layer_logits, dim=-1)
-        print('logit_scores ', logit_scores)
-        logit_scores_processed = logits_processor(input_ids, logit_scores)
-        print('logit_scores_processed ', logit_scores_processed)
-        logit_scores = logits_warper(input_ids, logit_scores_processed)
-        logit_scores = torch.nan_to_num(logit_scores, neginf=0.0)  # заменим -inf на 0
-        logit_scores = torch.abs(logit_scores)  # всё станет ≥ 0
-        print('logit_scores 2 ', logit_scores)
-        softmax_probs = torch.nn.functional.softmax(logit_scores, dim=-1)
-        print('softmax_probs ', softmax_probs)
-
-    softmax_probs = softmax_probs.detach().cpu().numpy()
-
-    # Находим индекс токена <IMG_CONTEXT> для выделения токенов изображения
-    img_context_token_id = state["tokenizer"].convert_tokens_to_ids(IMG_CONTEXT_TOKEN)
-    input_ids_list = input_ids.tolist()[0]
+    logit_lens = torch.stack(logits)
+    
+    with torch.no_grad():
+        softmax_probs = torch.softmax(logit_lens, dim=-1)
+    
+    softmax_probs = softmax_probs.permute(2, 0, 1)
+    
     try:
-        image_token_index = input_ids_list.index(img_context_token_id)
-    except ValueError:
-        raise ValueError(f"Token {IMG_CONTEXT_TOKEN} not found in input_ids.")
+        image_token_region = softmax_probs[:, :, 91:-12]
+    except Exception as e:
+        print(f"Warning: Error slicing token region: {e}")
+        print(f"Softmax probs shape: {softmax_probs.shape}")
+        image_token_region = softmax_probs
+    
+    image_token_region = image_token_region.detach().cpu().float().numpy()
+    return caption, image_token_region
+    # # Обработка скрытых состояний
+    # hidden_states = torch.stack(output.hidden_states[0])
+    # print(hidden_states.shape)
+    # # Обработка логитов
+    # logits_warper = TopKLogitsWarper(top_k=200, filter_value=float("-inf"))
+    # logits_processor = LogitsProcessorList([])
+    
+    # with torch.inference_mode():
+    #     curr_layer_logits = state["model"].get_output_embeddings()(hidden_states).cpu().float()
+    #     print('curr_layer_logits ', curr_layer_logits)
+    #     logit_scores = torch.nn.functional.log_softmax(curr_layer_logits, dim=-1)
+    #     print('logit_scores ', logit_scores)
+    #     logit_scores_processed = logits_processor(input_ids, logit_scores)
+    #     print('logit_scores_processed ', logit_scores_processed)
+    #     logit_scores = logits_warper(input_ids, logit_scores_processed)
+    #     # logit_scores = torch.nan_to_num(logit_scores, neginf=0.0)  # заменим -inf на 0
+    #     # logit_scores = torch.abs(logit_scores)  # всё станет ≥ 0
+    #     print('logit_scores 2 ', logit_scores)
+    #     softmax_probs = torch.nn.functional.softmax(logit_scores, dim=-1)
+    #     print('softmax_probs ', softmax_probs)
 
-    # Выделяем вероятности для токенов изображения
-    num_image_tokens = state["model"].num_image_token * num_patches
-    softmax_probs = softmax_probs[
-        :, :, image_token_index:image_token_index + num_image_tokens
-    ]
+    # softmax_probs = softmax_probs.detach().cpu().numpy()
 
-    # Транспонируем к форме (vocab_dim, num_layers, num_tokens)
-    print("softmax_probs shape:", softmax_probs.shape)
-    softmax_probs = softmax_probs.transpose(3, 0, 2, 1)
+    # # Находим индекс токена <IMG_CONTEXT> для выделения токенов изображения
+    # img_context_token_id = state["tokenizer"].convert_tokens_to_ids(IMG_CONTEXT_TOKEN)
+    # input_ids_list = input_ids.tolist()[0]
+    # try:
+    #     image_token_index = input_ids_list.index(img_context_token_id)
+    # except ValueError:
+    #     raise ValueError(f"Token {IMG_CONTEXT_TOKEN} not found in input_ids.")
+
+    # # Выделяем вероятности для токенов изображения
+    # num_image_tokens = state["model"].num_image_token * num_patches
+    # softmax_probs = softmax_probs[
+    #     :, :, image_token_index:image_token_index + num_image_tokens
+    # ]
+
+    # # Транспонируем к форме (vocab_dim, num_layers, num_tokens)
+    # print("softmax_probs shape:", softmax_probs.shape)
+    # softmax_probs = softmax_probs.transpose(3, 0, 2, 1)
 
     return caption, softmax_probs
 
