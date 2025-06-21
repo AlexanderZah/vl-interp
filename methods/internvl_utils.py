@@ -289,14 +289,23 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
             softmax_probs.append(softmax_probs_layer.to(torch.float16).cpu().numpy())
         del curr_layer_logits, logit_scores, logit_scores_processed, softmax_probs_layer
     
-    # Проверяем и выравниваем размерности
+    # Находим максимальное количество токенов
     max_tokens = max(x.shape[1] for x in softmax_probs)
-    padded_probs = [
-        np.pad(x, ((0, 0), (0, max_tokens - x.shape[1])), 
-        mode='constant'
-    ) for x in softmax_probs]
-
-    softmax_probs = np.stack(padded_probs).transpose(1, 0, 2)  # Изменён порядок осей
+    
+    # Создаем новый список с выровненными массивами
+    aligned_probs = []
+    for x in softmax_probs:
+        if x.shape[1] < max_tokens:
+            # Дополняем нулями справа
+            pad_width = ((0, 0), (0, max_tokens - x.shape[1]))
+            x_padded = np.pad(x, pad_width, mode='constant', constant_values=0)
+            aligned_probs.append(x_padded)
+        else:
+            aligned_probs.append(x)
+    
+    # Объединяем и транспонируем
+    softmax_probs = np.stack(aligned_probs)
+    softmax_probs = np.transpose(softmax_probs, (1, 2, 0))
     
     return caption, softmax_probs
 
