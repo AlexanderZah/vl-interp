@@ -387,6 +387,12 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
     # Объединяем и транспонируем softmax_probs
     softmax_probs = np.stack(softmax_probs)  # Shape: (num_layers, batch_size, num_image_tokens, vocab_size)
     print(f"Stacked softmax_probs shape: {softmax_probs.shape}")
+
+
+    softmax_probs = softmax_probs[
+        :, :, image_token_index : image_token_index + num_image_tokens, :
+    ]
+
     softmax_probs = softmax_probs.transpose(3, 0, 2, 1)  # Shape: (vocab_size, num_layers, num_image_tokens, batch_size)
     print(f"Transposed softmax_probs shape: {softmax_probs.shape}")
 
@@ -537,12 +543,11 @@ def load_internvl_state(device="cuda"):
         dict: State containing model, tokenizer, vocabulary, embeddings, and helper functions.
     """
     # Загрузка модели и токенизатора
-    model_path = "OpenGVLab/InternVL2_5-1B"
+    model_path = "OpenGVLab/InternVL2_5-2B"
     model_name = model_path
     model = AutoModel.from_pretrained(
         model_path,
         torch_dtype=torch.float16,
-        load_in_4bit=True,
         low_cpu_mem_usage=True,
         trust_remote_code=True
     ).eval().to(device)
