@@ -473,7 +473,7 @@ def load_internvl_state(device="cuda"):
         trust_remote_code=True
     ).eval().to(device)
     tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
-
+    model.img_context_token_id = tokenizer.convert_tokens_to_ids(IMG_CONTEXT_TOKEN)
     # Получение словаря и эмбеддингов
     vocabulary = tokenizer.get_vocab()
     vocab_embeddings = get_vocab_embeddings_internvl(model, tokenizer, device=device)
