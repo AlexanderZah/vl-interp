@@ -376,7 +376,7 @@ def retrieve_logit_lens_internvl(state, img_path, text_prompt=None, num_patches=
     print(f"Vocabulary size: {vocab_size}")
 
     with torch.inference_mode():
-        for layer_idx in range(hidden_states.shape[0]):
+        for layer_idx in range(hidden_states.shape[14]):
             hs = hidden_states[layer_idx]  # Shape: (batch_size, num_image_tokens, hidden_size)
             print(f"Layer {layer_idx} hs shape: {hs.shape}")
             logits = model.lm_head(hs)  # Shape: (batch_size, num_image_tokens, vocab_size)
