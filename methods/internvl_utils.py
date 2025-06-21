@@ -109,7 +109,7 @@ def build_transform(input_size):
     ])
     return transform
 
-def load_images(image_files):
+def load_images(img_path):
     """
     Load images from a list of file paths.
     
@@ -119,7 +119,7 @@ def load_images(image_files):
     Returns:
         List of PIL.Image objects.
     """
-    return [Image.open(img_path).convert('RGB') for img_path in image_files]
+    return Image.open(img_path).convert('RGB')
 
 def generate_images_tensor(model, img_path, image_processor=None):
     """
