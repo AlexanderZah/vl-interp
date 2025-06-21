@@ -137,7 +137,7 @@ def generate_images_tensor(model, img_path, image_processor=None):
             - image_sizes: List of original image sizes (width, height).
     """
     # Загрузка изображений
-    image_files = [img_path]
+    image_files = img_path
     images = load_images(image_files)
     image_sizes = [x.size for x in images]
 
